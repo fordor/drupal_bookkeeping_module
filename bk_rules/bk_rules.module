@@ -1,0 +1,285 @@
+<?php
+
+/*
+* Implements hook_menu()
+*/
+function bk_rules_menu(){
+
+	$items['bk/rules/list'] = array(
+    'title' => 'Accounts Rules',
+    'page callback' => 'bk_rules_list',
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+  );
+	$items['bk/rules/%/list'] = array(
+    'title' => 'Account Rules',
+    'page callback' => 'bk_rules_list',
+		'page arguments' => array(2),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+  );
+	
+	$items['bk/rules/new'] = array(
+    'title' => 'New Rule',
+    'page callback' => 'bk_rules_form_wrapper',
+    'access arguments' => array('admin bookkeeping'),
+		'type' => MENU_LOCAL_TASK,
+    'weight' => -7,
+  );
+	
+	$items['bk/rules/%/new'] = array(
+    'title' => 'New Rule',
+    'page callback' => 'bk_rules_form_wrapper',
+		'page arguments' =>array(3, false, 2),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+  );
+
+	$items['bk/rules/%/edit'] = array(
+    'title' => 'New Rule',
+    'page callback' => 'bk_rules_form_wrapper',
+		'page arguments' =>array(3, 2, 4),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+  );
+	
+		$items['bk/rules/%/delete'] = array(
+    'title' => 'Delete Rule',
+    'page callback' => 'bk_rules_form_wrapper',
+		'page arguments' =>array(3, 2, 4),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+  );
+	return $items;
+}
+
+/*
+* Funcition bk_rules_list()
+*/
+function bk_rules_list ($aid=false){
+	$aids=$gids=array();
+	if($aid){
+		list($aids, $gids)=bk_expode_aid($aid);
+	}
+	
+	$sql1="SELECT c.gid as 'id', c.name FROM {bk_chart} c %s
+			UNION 
+			SELECT a.aid as 'id', a.name FROM {bk_accounts} a %s";
+			
+	$sql1=sprintf($sql1, 
+		$gids?"WHERE c.gid IN ('".(implode("', '", $gids))."')":'', 
+		$aids?"WHERE a.aid IN ('".(implode("', '", $aids))."')":''
+		);
+	$sql="SELECT r.*, f.name as 'from_name', t.name as 'to_name' FROM {bk_rules} r
+		LEFT JOIN($sql1) as f ON r.idfrom=f.id
+		LEFT JOIN($sql1) as t ON r.idto=t.id";
+	if($aid){
+		$sql.=" WHERE t.`id`<>'' or f.`id`<>''";
+	}
+	
+	
+	$qr=db_query($sql);
+	
+	$rows=array();
+	
+	while($r=$qr->fetchObject()){
+		$rows[]=array(
+			'data'=>array(
+				'idfrom'=>$r->idfrom,
+				'from_name'=>$r->from_name,
+				'idto'=>$r->idto,
+				'to_name'=>$r->to_name,
+			),
+			'class'=>array('rule_record'),	
+			'id'=>$r->rid,
+		);
+	}
+	
+	
+	if(!$qr){
+		$form['info'] = array(
+		  '#type' => 'item',
+		  '#markup' => t('No rules defined yet'),
+		);
+		
+	} else {
+		$build['rules_table']=array(
+			'#theme' => 'table',
+			'#header' => array('From', 'From Name', 'To', 'To Name'),
+			'#rows'=>$rows,
+		);
+	}
+	
+	$build['new_rule'] = array(
+		'#type' => 'item',
+		'#markup' => l(t('New Rule'),'bk/rules'.($aid?'/'.$aid:'').'/new'),
+	);
+
+	return $build;
+}
+
+/*
+* Implements hook_page_build()
+* appends context menu
+*/
+function bk_rules_page_build(&$page) {
+
+	$path=current_path();
+	//if current path
+	if(preg_match("/bk\/rules(\/[\d\.]+)?\/list/", $path, $mt)){
+		
+			//if user allowed to edit bookkeeping records
+			if(user_access('admin bookkeeping'))
+			//append at the botton of the page context menu
+			$page['page_bottom']['context_accounts_menu'] = array(
+				'#theme' => 'context_menu' ,
+				'#menu_id' => 'context_bkrules',	//unique ID/html id name of the menu DIV
+				'#elements_class' => 'rule_record',	//the elements class name of TR in tables or watever that will trigger the menu
+				//list of the links of the context menu % positions to be replaced from the elements of #elements_class
+				'#links' =>array(
+					'edit'=>array('path'=>'/bk/rules/%/edit'.(@$mt[1]?$mt[1]:''), 'title'=>'Edit'),
+					'delete'=>array('path'=>'/bk/rules/%/delete'.(@$mt[1]?$mt[1]:''), 'title'=>'Delete'),
+				),
+				'#params'=>array('element:id'),
+			);
+	}
+}
+
+/*
+* Funcition bk_rules_form_wrapper()
+*/
+function bk_rules_form_wrapper ($mode='edit', $rid=false, $aid=false){
+	switch ($mode){
+		case 'delete':
+			return drupal_get_form('bk_rules_form_delete', $rid, $aid);
+			break;
+		default:
+			return drupal_get_form('bk_rules_form_edit', $rid, $aid);
+			break;
+	}
+}
+/*
+* Funcition bk_rules_form_edit()
+*/
+function bk_rules_form_edit ($form, &$form_state, $rid=false, $aid=false){
+
+	if($rid){
+		$rec=db_select('bk_rules', 'r')->fields('r')->condition('rid', $rid)
+			->execute()->fetchObject();
+	}	else {
+		$rec=new stdClass();
+	}
+		
+	//print_r($rec);
+	//exit;
+	
+	$sql1="SELECT * FROM (SELECT c.gid as 'id', c.name FROM {bk_chart} c
+			UNION 
+			SELECT a.aid as 'id', a.name FROM {bk_accounts} a) as t ORDER BY t.`id`";
+			
+	$qr=db_query($sql1);
+	
+	$options=array();
+	while($r=$qr->fetchObject()){
+		$options[$r->id]=(str_repeat('. ', strlen($r->id)-1)).$r->id.' '.$r->name;
+	}
+	
+	$form['idfrom'] = array(
+		'#type' => 'select',
+		'#title' => t('From'),
+		'#options' => $options,
+		'#default_value' => @$rec->idfrom?$rec->idfrom:@$aid,
+		//'#description' => t('description'),
+		//'#access' => $admin,
+	);
+	
+	$form['idto'] = array(
+		'#type' => 'select',
+		'#title' => t('To'),
+		'#options' => $options,
+		'#default_value' => @$rec->idto?$rec->idto:@$aid,
+		//'#description' => t('description'),
+		//'#access' => $admin,
+	);
+	
+	$form['action']['submit']=array(
+		'#type'=>'submit',
+		'#value'=>t('Save'),
+		);
+	
+	return $form;
+}
+
+/*
+* Funcition bk_rules_form_edit_submit()
+*/
+function bk_rules_form_edit_submit ($form, &$form_state){
+
+	require_once(drupal_get_path('module', 'bk').'/bk_entry.inc');
+	
+	$id=$form_state['build_info']['args'][0];
+	$aid=@$form_state['build_info']['args'][1];
+	$v=$form_state['values'];
+	
+	if(!$id){
+		bk_entry_insert('bk_rules', $v);
+		drupal_set_message(t('Entry saved'));
+	} else {
+		$v['__id']='rid';
+		$v['__value']=$id;		
+		bk_entry_update('bk_rules', $v);
+		drupal_set_message(t('Entry saved'));
+		
+		$form_state['redirect']='bk/rules'.($aid?'/'.$aid:'').'/list';
+	}
+	
+}
+
+/*
+* Funcition bk_accounts_form_delete()
+*/
+function bk_rules_form_delete ($form, &$form_state, $rid, $aid=false)
+{	
+	$entry=db_select('bk_rules','r')
+		->fields('r')->condition('rid', $rid)
+			->execute()->fetchObject();
+			
+	$table1=strstr($entry->idfrom, '.')?'bk_accounts':'bk_chart';
+	$table2=strstr($entry->idto, '.')?'bk_accounts':'bk_chart';
+	
+	$code['bk_accounts']="aid";
+	$code['bk_chart']="gid";
+	
+	$name_from=db_select($table1, 't')->fields('t', array('name'))->condition($code[$table1], $entry->idfrom)->execute()->fetchObject();
+	$name_to=db_select($table2, 't')->fields('t', array('name'))->condition($code[$table2], $entry->idto)->execute()->fetchObject();
+	
+	$form = confirm_form($form,
+		t('Are you sure you want to delete?'),
+		'bk/rules'.($aid?'/'.$aid:'').'/list',
+		t('Rule "@name_from" -> "@name_to"?', array('@name_from' => $name_from->name, '@name_to' => $name_to->name)),
+		t('Delete'),
+		t('Cancel'),
+		'confirm'
+	);
+	
+  return $form;
+}
+
+/*
+* Funcition bk_accounts_form_delete_submit()
+*/
+function bk_rules_form_delete_submit ($form, &$form_state){
+	
+	require_once(drupal_get_path('module','bk').'/bk_entry.inc');
+	$v=$form_state['values'];
+	
+	$id=$form_state['build_info']['args'][0];
+	$aid=@$form_state['build_info']['args'][1];
+	
+	if($v['aid']){
+		bk_entry_delete('bk_rules', 'rid', $id);
+		drupal_set_message(t('Entry deleted'));
+	}
+
+	$form_state['redirect']='bk/rules'.($aid?'/'.$aid:'').'/list';
+}

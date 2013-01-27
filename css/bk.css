@@ -1,0 +1,75 @@
+.bk-nr{
+	white-space:nowrap;
+	text-align: right;
+}
+
+.bk-minus{
+	color: red;
+}
+
+.bk-selected{
+	background: orange;
+}
+
+.bk-a1{
+	text-indent: 0px; 
+	font-weight: bold; 
+	/*font-size: x-large; */
+	text-transform: uppercase; 
+	color: DarkRed;
+}
+.bk-a2{
+	text-indent: 10px; 
+	font-weight: bold; 
+	/*font-size: large; */
+	text-transform: uppercase;
+	color: MidnightBlue;
+}
+.bk-a3{
+	text-indent: 20px; 
+	font-weight: bold; 
+	/* font-size: medium; */
+	text-transform: uppercase;
+	color: DarkGreen;
+}
+.bk-a4{
+	text-indent: 30px;
+	font-weight: bold; 
+	text-transform: uppercase;
+	color: DarkSlateGray;
+}
+.bk-a5{
+	text-indent: 40px;
+}
+.bk-a6{
+	text-indent: 70px; font-size: x-small;
+}
+
+.container-myinline .form-item{
+	float: left;
+	padding-right: 3px;
+}
+.container-myinline-stop{
+	clear: both;
+}
+
+.bk-money{
+	background: url('images/money.png') no-repeat;
+	text-indent:18px;
+	background-position: 4px 4px;
+}
+.bk-folder{
+	background: url('images/folder.png') no-repeat;
+	text-indent: 18px;
+	background-position: 4px 4px;
+}
+
+.bk-file{
+	background: url('images/file.png') no-repeat;
+	text-indent: 18px;
+	background-position: 4px 4px;
+}
+
+.form-checkboxes{
+	padding-left: 160px;
+}

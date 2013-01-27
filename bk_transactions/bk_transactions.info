@@ -1,0 +1,7 @@
+;$Id$
+name = Bookkeeping Transactions
+description = Bookkeeping Transactions UI
+package = Bookkeeping
+core = 7.x
+;files[] = bk_entry.inc
+;stylesheets[all][] = css/bk.css

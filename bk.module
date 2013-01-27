@@ -1,0 +1,94 @@
+<?php
+
+/***************************************************************
+ * @file bk.module
+ * Bookkeeping API
+ ***************************************************************/
+ 
+ /*
+ * Implements hook_dbg_query()
+ */
+ function bk_dbg_query($sql, $params=array()){
+	foreach($params as $k=>$v) $sql=str_replace($k, "'$v'", $sql);
+	print preg_replace("/\{(\w+)\}/", "$1", $sql);
+	exit;
+ }
+ /**
+ * Implements hook_permission().
+ */
+function bk_permission() {
+  return array(
+    'access bookkeeping' => array(
+      'title' => t('Access Bookkeeping'),
+      //'description' => t('Access accounts and transactions.'),
+    ),
+		'admin bookkeeping' => array(
+      'title' => t('Administer Bookkeeping'),
+      //'description' => t('Access accounts and transactions.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu()
+ */
+function bk_menu() {
+	$items = array();
+
+	$items['bk'] = array(
+		'title' => 'Bookkeeping',
+		'description' => 'Operate Bookkeeping documents and transations',
+		'page callback' => 'bk_front_page',
+		'access arguments' => array('access bookkeeping'),
+    //'file path' => drupal_get_path('module', 'system'),
+    //'file' => 'menu.inc',
+    'weight' => -7,
+	);
+	
+	//configuration
+	$items['admin/config/bk'] = array(
+    'title' => 'Bookkeeping',
+    'description' => 'Bookkeeping Settings.',
+    'position' => 'right',
+    'weight' => -10,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('administer site configuration'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+	
+	return $items;
+}
+
+/*
+* Implements hook_front_page()
+*/
+function bk_front_page(){
+	return array(
+		'#theme'=>'links',
+		'#links'=>menu_navigation_links('navigation', 1),
+		'#class' => array('links', 'inline'),
+	);
+}
+
+/*
+* Funcition bk_expode_aid()
+*/
+function bk_expode_aid ($aid){
+	$aids=$gids=array();
+	if($aid){
+		$ids_parts=explode('.', $aid);
+		$buf='';
+		$gID=array_shift($ids_parts);
+		$gIDs=str_split($gID);
+		foreach($gIDs as $k=>$g_id){
+			$buf.=$g_id;
+			$gids[':gid'.$k]=$buf;
+		}
+		foreach($ids_parts as $k=>$id_part){
+			$buf.=($buf?'\\\.':'').$id_part;
+			$aids[':aid'.$k]=$buf;
+		}
+	}
+	return array($gids, $aids);
+}

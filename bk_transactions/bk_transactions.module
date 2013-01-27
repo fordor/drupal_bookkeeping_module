@@ -1,0 +1,352 @@
+<?php
+
+/*
+* Funcition bk_transactions_menu()
+*/
+function bk_transactions_menu (){
+	$items=array();
+	
+	$items['bk/transactions/%/list'] = array(
+    'title' => 'Transactions',
+    'page callback' => 'bk_transactions_list',
+		'page arguments' => array(2),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+  );
+	
+	$items['bk/transactions/%/new'] = array(
+    'title' => 'New Transaction',
+    'page callback' => 'bk_transactions_form_wrapper',
+		'page arguments' => array(false, 2, 3),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+		'file'=>'bk_transactions_form.inc',
+  );
+	
+	$items['bk/transactions/%/edit'] = array(
+    'title' => 'Edit Transaction',
+    'page callback' => 'bk_transactions_form_wrapper',
+		'page arguments' => array(3, 2, 4),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+		'file'=>'bk_transactions_form.inc',
+  );
+	
+	$items['bk/transactions/%/edit/%'] = array(
+    'title' => 'Edit Transaction',
+    'page callback' => 'bk_transactions_form_wrapper',
+		'page arguments' => array(3, 2, 4),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+		'file'=>'bk_transactions_form.inc',
+  );
+	
+	$items['bk/transactions/%/delete'] = array(
+    'title' => 'Delete Transaction',
+    'page callback' => 'bk_transactions_form_wrapper',
+		'page arguments' =>array(3, 2, 4),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+		'file'=>'bk_transactions_form.inc',
+  );
+	
+	return $items;
+}
+
+/**
+* Function bk_transactions_form_date_range()
+*/
+function bk_transactions_form_date_range($form, &$form_state, $aid, $date_start=false, $date_end=false){
+	
+	//$v=@$form_state['values'];
+	//drupal_set_message(date('Y-m-d', $date_start));
+	
+	$form['container'] = array(
+    '#prefix' => '<div class="container-inline">',
+    '#suffix' => '</div>',
+  );
+	
+	$form['aid']=array(
+		'#type' => 'hidden',
+		'#default_value' => $aid,
+	);
+	// Timestamp
+  $form['container']['date_start'] = array(
+    '#title' => t('Start Date'),
+    '#type' => 'textfield',
+    '#default_value' => array(
+			'year'=>date('Y', $date_start), 
+			'month'=>date('m', $date_start),
+			'day'=>date('d', $date_start),
+			)
+		//date('Y-m-d H:i:s', $date_start),
+  );
+	
+	// Timestamp
+  $form['container']['date_end'] = array(
+    '#title' => t('End Date'),
+    '#type' => 'textfield',
+    '#default_value' => array(
+			'year'=>date('Y', $date_end), 
+			'month'=>date('m', $date_end),
+			'day'=>date('d', $date_end),
+			)
+  );
+	
+	// Use the date_popup module if it's available.
+  if (module_exists('date')) {
+    $form['container']['date_start']['#type'] = 'date';
+    $form['container']['date_end']['#type'] = 'date';
+    $pupup_params= array(
+      '#date_format' => 'Y-m-d',
+      '#date_type' => DATE_UNIX,
+      '#date_timezone' => date_default_timezone(),
+			'#date_label_position'=>FALSE,
+			'#date_label_position'=>FALSE,
+    );
+		$form['container']['date_start']+=$pupup_params;
+		$form['container']['date_end']+=$pupup_params;
+  }
+	
+	$form['container']['submit']=array(
+		'#type'=>'submit',
+		'#value'=>t('Submit'),
+	);
+	
+	
+	//$date_start=@$v['date_start']?strtotime($v['date_start']):false;
+	//$date_end=@$v['date_end']?strtotime($v['date_end']):false;
+	
+	return $form;
+}
+
+/*
+* Funcition bk_transactions_list()
+*/
+function bk_transactions_list($aid, $date_start=false, $date_end=false){
+	
+	$build=array();
+	
+	drupal_set_breadcrumb(_bk_accounts_breadcrumb($aid));
+	
+	$date_range_mode=variable_get('default_time_inverval_transaction_'.str_replace('.', '_', $aid));
+		
+	//if no start date requested
+	if(!$date_start) {
+		
+		//start with current month
+		$d=(object)getdate();
+		$date_start=mktime(0,0,0,$d->mon, 1, $d->year);
+	}
+	
+	
+	//if no end date requested or start date is bigger than end date
+	if(!$date_end||$date_start<$date_end) 
+		//make end date one month greater then start date
+		$date_end=strtotime("+1 month", $date_start);
+		
+	if($date_range_mode==1){
+		$date_start=strtotime("-1 month", $date_start);
+	}
+	
+	if($date_range_mode==2){
+		//$date_start=strtotime("-900 month", $date_start);
+		$date_start=mktime(0,0,0,1, 1, 1);
+	}
+	//print '-'.$date_start.'-';
+	
+	
+	//retrieve from database the account information
+	$account=db_select('bk_accounts', 'a')->fields('a')
+		->condition('aid', $aid)->execute()->fetchObject();
+		
+	$build['title']=array(
+		'#type' => 'item',
+		'#markup'=>'<h2>'.$account->name.'</h2>',
+	);
+	
+	/*
+	$build['info']=array(
+		'#type' => 'item',
+		'#markup'=>t('From Date').': '.date('Y-m-d', $date_start).' '.t('to date').':'.date('Y-m-d', $date_end),
+	);
+	*/
+	$build['daterange']=drupal_get_form('bk_transactions_form_date_range', $aid, $date_start, $date_end);
+	$build['daterange']['#attributes']['class'] = array('bk-noprint');
+	
+	$len=strlen($aid);
+	$regexp=str_replace('.', '\.', $aid).'($|\.)';
+	
+	$params=array(
+		':dstart'=>$date_start,
+		':regexp1'=>$regexp,
+		':dstart1'=>$date_start,
+		':regexp2'=>$regexp,
+		':dstart2'=>$date_start
+	);
+	//query to load start balance
+	$sql="SELECT 
+			'' as tid, 
+			:dstart as tdate, 
+			'Opening Balance' `comment`, 
+			`amount` 
+		FROM
+			(SELECT sum(amount) as amount, sum(q) as 'q'
+				FROM {bk_transactions}
+					WHERE `accto` REGEXP :regexp1
+					and	tdate<:dstart1
+				GROUP BY `accto`
+			UNION
+			SELECT -sum(amount) as amount, -sum(q) as 'q'
+				FROM {bk_transactions}
+					WHERE `accfrom` REGEXP :regexp2
+					and tdate<:dstart2
+				GROUP BY `accfrom`) as bl";
+	
+	//query to load transactions
+	$sql2="SELECT 
+			tid, 
+			tdate, 
+			`comment`, 
+			`amount`*IF(`accfrom` REGEXP :e1,-1,1) as 'amount',
+			`q`*IF(`accfrom` REGEXP :e1,-1,1) as 'q',
+			IF(`accfrom` REGEXP :e1,`accto`,`accfrom`) as 'aid'
+		FROM {bk_transactions} 
+		WHERE 
+			tdate>=:date_start and tdate<:date_end 
+			AND (`accto` 	REGEXP :e1
+				OR `accfrom` REGEXP :e1)";
+	
+	$params2=array(
+			':e1'=>$regexp,
+			//':e1b'=>$regexp,
+			//':e2'=>$regexp,
+			':date_start'=>$date_start,
+			':date_end'=>$date_end,
+			//':e3'=>$regexp,
+			//':e4'=>$regexp,
+		);
+	
+	//append correspondent account name (to/from which transaction were made)
+	$sql2="SELECT dt.*, a.name
+		FROM ($sql2) as dt
+		LEFT JOIN {bk_accounts} a ON dt.aid=a.aid";
+		
+	$header=array(t('Date'), t('Correspondent Account'), t('Comment'), t('Value'), t('Balance'));
+	if($account->mu) $header[]=t('Quantity');
+	$rows=array();
+	$cls=array('bk-nr');
+	$clsred=array('bk-nr', 'bk-minus');
+
+	
+	//opening ballance
+	$qr=db_query($sql, $params)->fetchObject();
+
+	$row=array(
+		'data'=>array(
+			'date'=>date('Y-m-d', $date_start),
+			'correspondent'=>' - ',
+			'comment'=>t('Start Balance'),
+			'value'=>' - ',
+			'balance'=>array(
+					'data'=>sprintf('%.2f',@$qr->amount),
+					'class'=>@$qr->amount<0?$clsred:$cls,
+				),
+		),
+	);
+	
+	
+	if($account->mu){
+		$row['data']['q']=array(
+			'data'=>sprintf('%.1f '.$account->mu,@$qr->q),
+			'class'=>@$qr->q<0?$clsred:$cls,
+		);
+	}
+	
+	$rows[0]=$row;
+
+   $qr2=db_query($sql2, $params2);
+
+	$balance=@$qr->amount;	
+	while($r=$qr2->fetchObject()){
+		$balance+=$r->amount;
+		$row=array(
+			'date'=>date('Y-m-d', $r->tdate),
+			'correspondent'=>@$r->name?$r->name:t('Openning Ballance'),
+			'comment'=>$r->comment,
+			'value'=>array(
+				'data'=>sprintf('%.2f', $r->amount),
+				'class'=>$r->amount<0?$clsred:$cls,
+			),
+			'balance'=>array(
+				'data'=>sprintf('%.2f',$balance),
+				'class'=>$balance<0?$clsred:$cls,
+			),
+		);
+		
+		if($account->mu){
+			$row['q']=array(
+				'data'=>sprintf('%.1f '.$account->mu,@$r->q),
+				'class'=>@$r->q<0?$clsred:$cls,
+			);
+		}
+		
+		$rows[$r->tid]=array(
+			'data'=>$row,
+			'class'=>array('tr_record'),
+			'id'=>$r->tid,
+		);
+	}
+	
+	$build['table']=array(
+		'#theme'=>'table',
+		'#header'=>$header,
+		'#rows'=>$rows,
+	);
+	
+	//fire hooks to allow modifying the form submit action
+	foreach (module_implements('bk_transactions_list') as $module) {
+		$function = $module . '_bk_transactions_list';
+		$function($build, $aid);
+	}
+	
+	//append new entry form to facilitate new entries
+	require_once(drupal_get_path('module', 'bk_transactions').'/bk_transactions_form.inc');
+	
+	$build['new_transation']['title']=array(
+		'#type' => 'item',
+		'#markup'=>'<h2 class="bk-noprint">'.$account->name.' - '.t('New Transaction').'</h2>',
+	);
+	
+	$build['new_transation']['form']=drupal_get_form('bk_transactions_form_edit', false, $aid);
+	$build['new_transation']['form']['#attributes']['class'] = array('bk-noprint');
+	
+	return $build;
+}
+
+/*
+* Implements hook_page_build()
+* appends context menu
+*/
+function bk_transactions_page_build(&$page) {
+
+	$path=current_path();
+	//if current path
+	if(preg_match("/bk\/transactions(\/[\d\.]+)\/list/", $path, $mt)){
+		
+			//if user allowed to edit bookkeeping records
+			if(user_access('admin bookkeeping'))
+			//append at the botton of the page context menu
+			$page['page_bottom']['context_transactions_menu'] = array(
+				'#theme' => 'context_menu' ,
+				'#menu_id' => 'context_transactions',	//unique ID/html id name of the menu DIV
+				'#elements_class' => 'tr_record',	//the elements class name of TR in tables or watever that will trigger the menu
+				//list of the links of the context menu % positions to be replaced from the elements of #elements_class
+				'#links' =>array(
+					'edit'=>array('path'=>'/bk/transactions/%/edit'.(@$mt[1]?$mt[1]:''), 'title'=>t('Edit')),
+					'delete'=>array('path'=>'/bk/transactions/%/delete'.(@$mt[1]?$mt[1]:''), 'title'=>t('Delete')),
+				),
+				'#params'=>array('element:id'),
+			);
+	}
+}

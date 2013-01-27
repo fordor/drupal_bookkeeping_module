@@ -1,0 +1,216 @@
+<?php
+
+/*
+* Implements hook_install()
+*/
+function bk_install(){
+
+	//if no entries in currency table
+	if(!db_select('bk_currency', 'c')->fields('c')->execute())
+	
+		//insert f#%1ng dollars
+		db_insert('bk_currency', 'c')
+			->fields('c', array('cid', 'currency'))
+			->values(array('USD', 'US Dollar'))
+			->execute();
+}	
+/**
+ * Implements hook_schema().
+ */
+function bk_schema() {
+	
+	// --- Accounts Charts (Accounts Categories) schema
+	$schema['bk_chart'] = array(
+		'description' => 'Bookeeping account categories chart',
+		'fields' => array(
+			'gid'  => array(
+				'type' => 'varchar',
+				'not null' => TRUE,
+				'length'=> 6,
+				'description' => 'Primary Key: Unique account ID',
+				),
+			'name' => array(
+				'type' => 'varchar',
+				'length' => 255,
+				'not null' => TRUE,
+				'default' => '',
+				'description' => 'Name of the category',
+				),
+			),
+		'primary key' => array('gid'),
+		'indexes' => array(
+			'gid'=> array('gid'),
+			'name'=> array('name'),
+		),
+	);	
+  
+	// --- Bokkeeping Currency ---
+	$schema['bk_currency'] = array(
+		'description' => 'Stores bookeeping currency types',
+		'fields' => array(
+			'cid'  => array(
+				'type' => 'varchar',
+				'not null' => TRUE,
+				'length'=> 3,
+				'description' => 'Primary Key: Unique currency ID',
+				),
+			'currency' => array(
+				'type' => 'varchar',
+				'length' => 15,
+				'not null' => TRUE,
+				'default' => '',
+				'description' => 'Name of the currency',
+				),
+			),
+		'primary key' => array('cid'),
+		'indexes' => array(
+			'currency'    => array('currency'),
+		),
+	);
+	
+	// --- Bokkeeping Accounts ---
+	$schema['bk_accounts'] = array(
+		'description' => 'Bookkeeping accounts',
+		'fields' => array(
+			'aid'  => array(
+				'type' => 'varchar',
+				'not null' => TRUE,
+				'length'=> 25,
+				'description' => 'Primary Key: Unique currency ID',
+				),
+			'name' => array(
+				'type' => 'varchar',
+				'length' => 200,
+				'not null' => TRUE,
+				'default' => '',
+				'description' => 'Name of the account.',
+				),
+			'cid'  => array(
+				'type' => 'varchar',
+				'not null' => TRUE,
+				'length'=> 3,
+				'default' => 'USD',
+				'description' => 'Currency ID',
+				),
+			'mu'  => array(
+				'type' => 'varchar',
+				'not null' => TRUE,
+				'length'=> 10,
+				'default' => '',
+				'description' => 'Currency ID',
+				),
+			/*
+			'balance'=>array(
+				'type' =>  'numeric',
+				'not null' => TRUE,
+				'default' => 0,
+				'precision' => 12, 
+				'scale' => 2,
+				'description' =>"Account's openning ballance",
+				),*/
+			'closed' => array(
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0,
+				'size' => 'tiny',
+				'description' => 'Indicated if account is closed or open for transations',
+				),
+			'created' => array(
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0,
+				'description' => 'Unix timestamp when account were registered',
+				),
+			'notes' => array(
+				'type' => 'text',
+				'description' => 'Account notes',
+				),
+			),
+		'primary key' => array('aid'),
+		'indexes' => array(
+			'aid'    => array('aid'),
+			'name'    => array('name'),
+		),
+	);
+	
+	// --- Bokkeeping Transactions ---
+	$schema['bk_transactions'] = array(
+		'description' => 'Stores bookeeping transactions data',
+		'fields' => array(
+			'tid'  => array(
+				'type' => 'serial',
+				'not null' => TRUE,
+				'description' => 'Primary Key: Unique currency ID',
+				),
+			'uid' => array(
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0,
+				'description' => "Creator user's {users}.uid",
+				),
+			'created' => array(
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0,
+				'description' => 'Unix timestamp when transaction were registered.',
+				),
+			'tdate' => array(
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0,
+				'description' => 'Unix timestamp when transaction occured.',
+				),
+			'accfrom' => array(
+				'type'=>'varchar',
+				'length'=>25,
+				'not null' => TRUE,
+				'description' => 'Source account/credited account',
+				), 
+			'accto' => array(
+				'type'=>'varchar',
+				'length'=>25,
+				'not null' => TRUE,
+				'description' => 'Destination account/debited account',
+				), 
+			'amount'=>array(
+				'type' => 'numeric',
+				'not null' => TRUE,
+				'precision' => 12, 
+				'scale' => 2,
+				'description' => 'The value of the transaction in currency',
+			),
+			'q'=>array(
+				'type' => 'numeric',
+				'not null' => TRUE,
+				'precision' => 12, 
+				'scale' => 3,
+				'description' => 'The physical quanity of the transaction',
+			),
+			'docnr' => array(
+				'type' => 'varchar',
+				'not null' => TRUE,
+				'default' => '',
+				'length' => 25,
+				'description' => "Document number (if any)",
+				),
+			'comment' => array(
+				'type' => 'varchar',
+				'description' => 'Transaction comments/notes',
+				'length'=>255,
+				),
+			'locked' => array(
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0,
+				'length' => 1,
+				'description' => "Transaction locked for editing",
+				),
+			),
+		'primary key' => array('tid'),
+		'indexes' => array(
+			'docnr'    => array('docnr'),
+			'comment'    => array('comment'),
+		),
+	);
+  return $schema;
+}

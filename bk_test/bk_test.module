@@ -1,0 +1,40 @@
+<?php
+
+/*
+* Implements hook_menu()
+*/
+function bk_test_menu(){
+	
+	$items['bk/test/slavic']=array(
+    'title' => 'Slavic',
+    'page callback' => 'bk_test_functia_mea',
+    'access arguments' => array('admin bookkeeping'),
+  );
+	
+	return $items;
+}
+
+/*
+* Function bk_test_functia_mea()
+*/
+function bk_test_functia_mea (){
+
+	//ini
+	$build=array();
+	
+	$header=array('Cod', 'Nume');
+	$rows=array(
+		array('1', 'Slavic'),
+		array('2', 'Dorin'),
+		array('3', 'Liuda'),
+	);
+	
+	$build['table']=array(
+		'#theme' => 'table',
+		'#header'=>$header,
+		'#rows' => $rows,
+	);
+	
+	
+	return $build;
+}

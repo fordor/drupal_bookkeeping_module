@@ -1,0 +1,34 @@
+<?php
+
+/*
+* Implements hook_schema()
+*/
+function bk_rules_schema(){
+	// --- Accounts Charts (Accounts Categories) schema
+	$schema['bk_rules'] = array(
+		'description' => 'Bookeeping transaction rules',
+		'fields' => array(
+			'rid' => array(
+        'description' => 'Primary Key: Unique authmap ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+			'idfrom'  => array(
+				'type' => 'varchar',
+				'not null' => TRUE,
+				'length'=> 25,
+				'description' => 'Primary Key: Unique account ID',
+				),
+			'idto'  => array(
+				'type' => 'varchar',
+				'not null' => TRUE,
+				'length'=> 25,
+				'description' => 'Primary Key: Unique account ID',
+				),
+			),
+		'primary key' => array('rid'),
+	);	
+	
+	return $schema;
+}

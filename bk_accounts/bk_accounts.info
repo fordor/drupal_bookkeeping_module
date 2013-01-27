@@ -1,0 +1,7 @@
+;$Id$
+name = Bookkeeping Accounts
+description = Bookkeeping Accounts User Interface
+package = Bookkeeping
+core = 7.x
+files[] = bk_accounts_form.inc
+;stylesheets[all][] = css/bk.css

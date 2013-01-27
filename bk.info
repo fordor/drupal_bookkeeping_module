@@ -1,0 +1,9 @@
+;$Id$
+name = Bookkeeping
+description = Bookkeeping API
+package = Bookkeeping
+core = 7.x
+dependencies[]=myentry
+files[] = bk_entry.inc
+stylesheets[all][] = css/bk.css
+stylesheets[print][] = css/bk.printer.css

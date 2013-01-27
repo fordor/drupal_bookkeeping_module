@@ -1,0 +1,391 @@
+<?php
+
+
+/****************************************************************************
+* User Interface - Accounts accounts
+****************************************************************************/
+
+/*
+* Implements hook_title_menu()
+* For more visit: http://api.drupal.org/api/drupal/includes!menu.inc/7
+*/
+function bk_accounts_menu(){
+	$items = array();
+	
+	$items['bk/accounts/%/list'] = array(
+    'title' => 'Accounts List',
+    'page callback' => 'bk_accounts_list',
+		'page arguments' => array(2),
+    'access arguments' => array('admin bookkeeping'),
+    'weight' => -7,
+  );
+	
+	$items['bk/accounts/%/open'] = array(
+    'title' => 'Open New Account',
+    'page callback' => 'bk_accounts_form_wrapper',
+		'page arguments' => array(2, 3),
+    'access arguments' => array('admin bookkeeping'),
+		'file'=>'bk_accounts_form.inc',
+    'weight' => -7,
+  );
+	
+	$items['bk/accounts/%/edit'] = array(
+    'title' => 'Edit',
+    'page callback' => 'bk_accounts_form_wrapper',
+		'page arguments' => array(2),
+    'access arguments' => array('admin bookkeeping'),
+		//'type' => MENU_LOCAL_ACTION,
+		'file'=>'bk_accounts_form.inc',
+    'weight' => -7,
+  );
+	
+	$items['bk/accounts/%/delete'] = array(
+    'title' => 'Delete',
+    'page callback' => 'bk_accounts_form_wrapper',
+		'page arguments' => array(2, 3),
+    'access arguments' => array('admin bookkeeping'),
+		//'type' => MENU_LOCAL_ACTION,
+		'file'=>'bk_accounts_form.inc',
+    'weight' => -7,
+  );
+	
+  return $items;
+}
+
+/*
+* Function bk_accounts_get_by_id()
+*/
+function bk_accounts_get_by_id ($id){
+	//if not devision by dots - is an account group overwise is account
+	$isAccount=strstr($id, '.');
+	$obj=NULL;
+	
+	if($isAccount){
+		$k='aid';
+		$obj=db_select('bk_accounts', 'a')
+			->fields('a')
+			->condition('aid', $id)
+			->execute()->fetchObject();
+		if($obj) $obj->id=$obj->aid;
+	} else {
+		$k='gid';
+		$obj=db_select('bk_chart', 'c')
+			->fields('c')
+			->condition('gid', $id)
+			->execute()->fetchObject();
+		
+		if($obj) $obj->id=$obj->gid;
+	}
+	
+	return $obj;
+}
+
+/*
+* Function bk_accounts_set_breadcrumb()
+*/
+function _bk_accounts_breadcrumb ($id, $last=false){
+	
+	// Create the breadcrumb for the page
+  $breadcrumb = array(
+    l(t('Home'), '<front>'),
+    l(t('Bookkeeping'), 'bk'),
+    l(t('Chart'), 'bk/chart')
+  );
+	
+	$ids=explode('.', $id);
+	$pID=array_shift($ids);
+	$aIds=array();
+	$buf='';
+	foreach($ids as $i) {
+		$buf.=$buf?'.'.$i:$pID.'.'.$i;
+		$aIds[]=$buf;
+	}
+	
+	$sql="SELECT 
+			c.gid as 'aid', 
+			CONCAT('bk/accounts/', c.gid, '/list') as 'link', 
+			c.name	
+		FROM {bk_chart} c WHERE c.gid=:pid
+		UNION
+		(SELECT 
+			a.aid as 'aid', 
+			CONCAT(IF(j.aid, 'bk/accounts/', 'bk/transactions/'), a.aid, '/list') as 'link', 
+			a.name
+			FROM {bk_accounts} a
+			LEFT JOIN {bk_accounts} j ON j.aid LIKE CONCAT(a.aid, '.%')
+			WHERE a.aid IN ('".implode("', '", $aIds)."')) ORDER BY aid";
+	
+	$qr=db_query($sql, array(':pid'=>$pID));
+	if($qr)
+	while($bc=$qr->fetchObject()){
+		$breadcrumb[]=l($bc->name, $bc->link);
+	
+	}
+	if($last) $breadcrumb[]=$last;
+	
+  return $breadcrumb;
+}
+/*
+* Function bk_accounts_list()
+* Listing all accounts/subaccounts for given group/account ID
+*/
+function bk_accounts_list ($id){
+
+	$obj=bk_accounts_get_by_id($id);
+	//check the level of the account ID requested
+	$build['title'] = array(
+		  '#type' => 'item',
+		  '#markup' => '<h2>'.$obj->name.' ('.$id.')</h2>',
+		);
+	
+	$sql="SELECT aa.*, a. amount, a.cid, a.q, j.aid as 'hasChildren', (tf.tid OR tt.tid)  as 'hasTransactions'
+	FROM {bk_accounts} aa
+	LEFT JOIN {bk_accounts} j ON j.aid LIKE CONCAT(aa.aid, '.%')
+	LEFT JOIN {bk_transactions} tf ON tf.`accfrom` LIKE CONCAT( aa.aid, '.%' )
+	LEFT JOIN {bk_transactions} tt ON tt.`accto` LIKE CONCAT( aa.aid, '.%' )
+	
+	LEFT JOIN (
+			SELECT tt.aid, sum(amount) as amount, a.cid, tt.q FROM 
+				(SELECT accto as 'aid', sum(amount) as amount, sum(q) as 'q'
+				FROM {bk_transactions}
+				WHERE accto REGEXP :exp
+				GROUP BY accto
+				UNION
+				SELECT accfrom as 'aid', -sum(amount) as amount, sum(q) as 'q'
+				FROM {bk_transactions}
+				WHERE accfrom REGEXP :exp
+				GROUP BY accfrom) as tt
+			LEFT JOIN {bk_accounts} a ON tt.aid=a.aid
+			GROUP BY aid) a 
+		ON LEFT(a.aid, LENGTH(aa.aid))=aa.aid
+
+	WHERE aa.aid REGEXP :exp ORDER BY aa.aid";
+	$qr=db_query($sql, array(':exp'=>'^'.$id.'.[0-9]+$'));
+	
+	drupal_set_breadcrumb(_bk_accounts_breadcrumb($id, t('Accounts List')));
+	
+	$rows=array();
+	while($r=$qr->fetchObject()){
+		$aid=$r->aid;
+		$cls=array('bk-folder');
+		
+		$cls=($r->amount<0)?'bk-minus bk-nr':'bk-nr';
+		if($r->amount){
+			$val='<span class="'.$cls.'">'.sprintf('%.2f', $r->amount).' '. $r->cid.'</span>';
+		} else {
+			$val ='';
+		}
+		
+		if(!isset($rows[$aid])){	
+			$disableCommands=array();
+			if($r->hasChildren||$r->hasTransactions) $disableCommands[]='delete';
+			if(!$r->hasChildren) {
+				$disableCommands[]='accounts';
+				$cls=array('bk-file');
+			} else {
+				$disableCommands[]='transactions';
+				$cls=array('bk-folder');
+			}
+			if($r->hasTransactions){
+				$cls=array('bk-money');
+				$disableCommands[]='addAccounts';
+			}
+			
+			//$cls[]='bk-money';
+			
+			$rows[$aid]=array(
+				'data'=>array(
+					'id'=>$aid,
+					'name'=>array(
+						'data'=>$r->name,
+						'class'=>$cls,
+						),
+					'amount'=>array(
+						'data'=>$val,
+						'class'=>array('bk-nr'),
+						),
+					'q'=>array(
+						'data'=>($r->q&&$r->mu&&!$r->hasChildren)?$r->q.' '.$r->mu:'',
+						'class'=>array('bk-nr'),
+						),
+					),
+				'class'=>array('acc_record'),	
+				'id'=>$aid,
+				'disable'=>implode(',', $disableCommands),
+			);
+		} else {
+			if($val) $rows[$aid]['data']['amount']['data'].='<br>'.$val;
+			//quantitative info - append if any
+			if($r->mu&&$r->q&&!$r->hasChildren){
+				$rows[$aid]['data']['q']['data']=(sprintf("%.2f",floatval($rows[$aid]['data']['q']['data']))+$r->q).' '.$r->mu;
+			}
+		}
+	}
+	
+	if(!$rows){
+		$build['info'] = array(
+		  '#type' => 'item',
+		  '#markup' => t('No accounts opened yet').'. '.t('You may want to open a new account: ').l('Open', 'bk/accounts/'.$id.'/open'),
+		);
+		return $build;
+	}
+	
+	$build['accounts']=array(
+		'#theme'=>'table',
+		'#header'=>array('gid'=>t('Id'), 'name'=>t('Name'), t('Status'), t('Quantity')),
+		'#rows'=>$rows,
+	);
+	
+	$build['info'] = array(
+		  '#type' => 'item',
+		  '#markup' => t('You may want to open a new account: ').l('Open', 'bk/accounts/'.$id.'/open'),
+		);
+		
+	return $build;
+}
+
+/*
+* Implements hook_page_build()
+* appends context menu
+*/
+function bk_accounts_page_build(&$page) {
+
+	$path=current_path();
+	//if current path
+	if(preg_match("/bk\/accounts\/[\d\.]+\/list/", $path)){
+		
+			//if user allowed to edit bookkeeping records
+			if(user_access('admin bookkeeping'))
+			//append at the botton of the page context menu
+			$page['page_bottom']['context_accounts_menu'] = array(
+				'#theme' => 'context_menu' ,
+				'#menu_id' => 'context_accounts',	//unique ID/html id name of the menu DIV
+				'#elements_class' => 'acc_record',	//the elements class name of TR in tables or watever that will trigger the menu
+				//list of the links of the context menu % positions to be replaced from the elements of #elements_class
+				'#links' =>array(
+					'accounts'=>array('path'=>'/bk/accounts/%/list', 'title'=>t('Sub Accounts')),
+					'transactions'=>array('path'=>'/bk/transactions/%/list', 'title'=>t('Transactions')),
+					'addAccounts'=>array('path'=>'/bk/accounts/%/open', 'title'=>t('Add Sub Account')),
+					'separator'=>array('type'=>'separator'),
+					'edit'=>array('path'=>'/bk/accounts/%/edit', 'title'=>t('Edit')),
+					'delete'=>array('path'=>'/bk/accounts/%/delete', 'title'=>t('Delete')),
+				),
+				'#params'=>array('element:id'),
+			);
+	}
+}
+/*
+* Function _bk_account_has_transactions()
+*/
+function _bk_account_has_transactions ($aid){
+	return db_select('bk_transactions', 'a')->fields('a')
+		->where('a.`accfrom` LIKE :from OR a.`accto` LIKE :to', array(':from'=>"$aid.%",':to'=>"$aid.%"))
+		->range(0, 1)->execute()->fetchObject();
+}
+
+/*
+* Function _bk_account_has_children()
+* Checks if group has subgroups
+*/
+function _bk_account_has_children ($aid){
+	$ar=db_query("SELECT a.*, j.aid as 'chld' FROM {bk_accounts} a
+LEFT JOIN {bk_accounts} j on j.aid LIKE CONCAT( a.aid, '.%') and j.aid<>a.aid
+WHERE a.aid=:aid", array(':aid'=>$aid))->fetchObject();
+	return $ar->chld;
+}
+
+/*
+* Function bk_accounts_get_parent_id()
+*/
+function _bk_accounts_get_parent_id ($aid){
+	$idParts=explode('.', $aid);
+	array_pop($idParts);
+	
+	return implode('.', $idParts);
+}
+
+/*
+* Function bk_accounts_debit_rules()
+*/
+function _bk_accounts_get_rules ($aid, $options){
+	$ids=array();
+	$ids_parts=explode('.', $aid);
+	$buf='';
+	foreach($ids_parts as $k=>$id_part){
+		$buf=($buf?'\\\.':'').$id_part;
+		$ids[':reg'.$k]=$buf;
+	}
+	
+	//load account that can credit current account
+	//but don't have children accounts
+	$ors="(a.aid REXEXP '".implode("' OR a.aid REXEXP '", array_keys($ids))."')";
+	$sql="SELECT a.* FROM {bk_accounts} a
+	LEFT JOIN {bk_accounts} j ON j.aid LIKE CONCAT(a.aid, '.%')
+	WHERE j.aid<>NULL AND ".$ors;
+	
+	$qr=db_query($sql, $ids);
+	
+	$rez=array();
+	
+	while($r=$qr->fetchObject()){
+		$rez[$r->aid]=@$options['names']?$r->name:$r;
+	}
+	
+	return $rez;
+}
+
+/*
+* Function bk_accounts_getmatch()
+* Loads all accounts that can have transactions that start with give @anid prefix
+*/
+function _bk_accounts_getmatch ($anid){
+	$sql="SELECT DISTINCT 
+		a1.aid as 'id', 
+		GROUP_CONCAT(a2.name SEPARATOR  '->') as 'name' 
+	FROM 
+		bk_accounts a1
+		LEFT JOIN bk_accounts j ON j.aid LIKE CONCAT(a1.aid, '.%')
+		LEFT JOIN (
+			SELECT r.`idfrom` as 'idexp' 
+			FROM bk_rules r 
+			WHERE :aid REGEXP CONCAT('^', REPLACE(r.idto, '.', '\\\.'))		
+			) as rl ON a1.aid REGEXP CONCAT('^', REPLACE(rl.idexp, '.', '\\\.')), 
+		bk_accounts a2 
+	WHERE 
+		a1.aid LIKE CONCAT(a2.aid, '%')
+		and j.aid is null
+		and rl.idexp is not null
+	GROUP BY a1.aid
+	ORDER BY a1.aid and LENGTH(a1.aid)";
+	//bk_dbg_query($sql, array(':aid'=>$anid));
+	return db_query($sql, array(':aid'=>$anid))->fetchAllKeyed(0, 1);
+}
+
+/*
+* Function bk_accounts_getmatch()
+* Loads all accounts that can have transactions that start with give @anid prefix
+*/
+function _bk_accounts_get_childs($anid, $makeregexp=true){
+
+	if(!is_array($anid)) $anid=array($anid);
+	$condition=$regs=array();
+	foreach($anid as $k=>$v){
+		$regs[':aid'.$k]=$makeregexp?'^'.mysql_real_escape_string($v):$v;
+		$condition[':aid'.$k]="a1.aid REGEXP :aid$k";
+	}
+	
+	$sql="SELECT DISTINCT 
+		a1.aid as 'id', 
+		GROUP_CONCAT(jj.name, '->', a1.name SEPARATOR  '-&gt;') as 'name' 
+	FROM 
+		bk_accounts a1
+		LEFT JOIN bk_accounts j ON j.aid LIKE CONCAT(a1.aid, '.%')
+		LEFT JOIN bk_accounts jj ON a1.aid LIKE CONCAT(jj.aid, '.%')
+	WHERE 
+		(".implode(' OR ', $condition).")
+		and j.aid is null
+	GROUP BY a1.aid
+	ORDER BY a1.aid and LENGTH(a1.aid)";
+	//bk_dbg_query($sql, array(':aid'=>$anid));
+	return db_query($sql, $regs)->fetchAllKeyed(0, 1);
+}

@@ -1,0 +1,243 @@
+<?php
+
+/****************************************************************************
+* User Interface - Accounts Chart
+****************************************************************************/
+
+/*
+* Implements hook_title_menu()
+* For more visit: http://api.drupal.org/api/drupal/includes!menu.inc/7
+*/
+function bk_chart_menu(){
+	$items = array();
+
+	//Viewing records
+	$items['bk/chart'] = array(
+    'title' => 'Accounts Chart',
+    'page callback' => 'bk_chart_list',
+    'access arguments' => array('view bk_chart'),
+    'weight' => -7,
+  );
+	
+	//Viewing records
+	$items['bk/chart/list'] = array(
+    'title' => 'List',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -7,
+  );
+	
+	$items['bk/chart/new'] = array(
+    'title' => 'New',
+    'page callback' => 'bk_chart_form_wrapper',
+    'access arguments' => array('admin bookkeeping'),
+		'type' => MENU_LOCAL_TASK,
+		'file'=>'bk_chart_edit.inc',
+    'weight' => -7,
+  );
+	
+	$items['bk/chart/%/edit'] = array(
+    'title' => 'Edit',
+    'page callback' => 'bk_chart_form_wrapper',
+		'page arguments' => array(2),
+    'access arguments' => array('admin bookkeeping'),
+		//'type' => MENU_LOCAL_ACTION,
+		'file'=>'bk_chart_edit.inc',
+    'weight' => -7,
+  );
+	
+	$items['bk/chart/%/delete'] = array(
+    'title' => 'Delete',
+    'page callback' => 'bk_chart_form_wrapper',
+		'page arguments' => array(2, 3),
+    'access arguments' => array('admin bookkeeping'),
+		//'type' => MENU_LOCAL_ACTION,
+		'file'=>'bk_chart_edit.inc',
+    'weight' => -7,
+  );
+	
+	$items['bk/chart/import'] = array(
+    'title' => 'Import',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('bk_chart_import_form'),
+    'access arguments' => array('admin bookkeeping'),
+    'type' => MENU_LOCAL_TASK,
+		'file'=>'bk_chart_import.inc',
+    'weight' => 14,
+  );
+	
+	$items['bk/chart/export'] = array(
+    'title' => 'Export',
+    'page callback' => 'bk_chart_export',
+    'access arguments' => array('admin bookkeeping'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 15,
+  );
+	
+  return $items;
+}
+
+/**
+* bk_chart_listview
+*/
+function bk_chart_list(){
+	
+	$build=array();
+	
+	//load accounts list from DB
+	/*
+	$records=db_select('bk_chart', 'c')
+		->fields('c')
+		->orderBy('gid')
+		->execute()->fetchAllAssoc('gid', PDO::FETCH_ASSOC);
+		*/
+	$qr=db_query("SELECT c.*, a.amount, a.cid, j.gid as 'hasChildren', aa.aid as 'hasAccounts' FROM {bk_chart} c
+LEFT JOIN {bk_chart} j ON j.gid LIKE CONCAT(c.gid, '_')
+LEFT JOIN {bk_accounts} aa ON aa.aid LIKE CONCAT( c.gid, '_' )
+
+LEFT JOIN (
+	SELECT tt.aid, sum(amount) as amount, a.cid FROM 
+		(SELECT accto as 'aid', sum(amount) as amount
+		FROM {bk_transactions}
+		GROUP BY accto
+		UNION
+		SELECT accfrom as 'aid', -sum(amount) as amount
+		FROM {bk_transactions}
+		GROUP BY accfrom) as tt
+	LEFT JOIN {bk_accounts} a ON tt.aid=a.aid
+	GROUP BY aid) a 
+ON LEFT(a.aid, LENGTH(c.gid))=c.gid
+
+GROUP BY c.gid, a.cid
+ORDER BY c.gid, a.cid");
+	$records=array();
+	
+	while($r=$qr->fetchObject()){
+		$k=$r->gid;
+		//print $k.' '.$r->cid.'<br>';
+		$cls=($r->amount<0)?'bk-minus bk-nr':'bk-nr';
+		if($r->amount){
+			$val='<span class="'.$cls.'">'.sprintf('%.2f', $r->amount).' '. $r->cid.'</span>';
+		} else {
+			$val ='';
+		}
+		
+		if(!isset($rows[$r->gid])){
+			$disableCommands=array();
+			if($r->hasChildren||$r->hasAccounts) $disableCommands[]='delete';
+			if($r->hasChildren) {
+				$disableCommands[]='accounts';
+				$disableCommands[]='addAccounts';
+			}
+			$records[$k]['id']=$k;
+			$records[$k]['name']=array(
+				'data'=>$r->name,
+				'class'=>array('bk-a'.strlen($k)),
+			);
+			$records[$k]['amount']=array(
+				'data'=>$val,
+				'class'=>array('bk-nr'),
+			);
+			$rows[$k]=array(
+				'data'=>$records[$k],
+				'class'=>array('record'),
+				'id'=>$k,
+				'disable'=>implode(',', $disableCommands),
+			);
+		} else {
+			if($val) $rows[$r->gid]['data']['amount']['data'].='<br>'.$val;
+		}
+	}
+	//exit;
+	$build['chart']=array(
+		'#theme'=>'table',
+		'#header'=>array('gid'=>t('Id'), 'name'=>t('Name'), t('Status')),
+		'#rows'=>$rows,
+	);
+	
+	return $build;
+}
+
+/*
+* Implements hook_page_build()
+*/
+function bk_chart_page_build(&$page) {
+
+	//if current path
+	switch(current_path()){
+		//points to the list of accounts
+		case 'bk/chart':
+		case 'bk/chart/list':
+		
+			//if user allowed to edit bookkeeping records
+			if(user_access('admin bookkeeping'))
+			//append at the botton of the page context menu
+			$page['page_bottom']['context_edit_menu'] = array(
+				'#theme' => 'context_menu' ,
+				'#menu_id' => 'context_one',	//unique ID/html id name of the menu DIV
+				'#elements_class' => 'record',	//the elements class name of TR in tables or watever that will trigger the menu
+				//list of the links of the context menu % positions to be replaced from the elements of #elements_class
+				'#links' =>array(
+					'accounts'=>array('path'=>'/bk/accounts/%/list', 'title'=>t('Accounts')),
+					'addAccounts'=>array('path'=>'/bk/accounts/%/open', 'title'=>t('Add Account')),
+					'separator'=>array('type'=>'separator'),
+					'edit'=>array('path'=>'/bk/chart/%/edit', 'title'=>t('Edit')),
+					'delete'=>array('path'=>'/bk/chart/%/delete', 'title'=>t('Delete')),
+				),
+				'#params'=>array('element:id'),
+				'#attached' => array(
+					'js' => array(
+						'misc/jquery.js',
+						drupal_get_path('module', 'context_menu') . '/jquery.contextMenu.js',
+						),
+					'css'=>array(drupal_get_path('module', 'context_menu') . '/jquery.contextMenu.css'),
+				),
+			);
+			break;
+	}
+}
+
+/*
+* Funcition _bk_chart_has_accounts()
+*/
+function _bk_chart_has_accounts ($gid){
+	return db_select('bk_accounts', 'a')->fields('a')
+		->condition('aid', $gid.'.%', 'LIKE')
+		->range(0, 1)->execute()->fetchObject();
+}
+
+
+/*
+* Funcition _bk_chart_has_accounts()
+*/
+function _bk_chart_record_exists ($gid){
+	return db_select('bk_chart', 'c')
+		->fields('c')
+		->condition('gid', $gid)
+		->execute()->fetchObject();
+}
+
+//
+
+/*
+* Funcition _bk_chart_exists()
+* checks if record exists in the database
+*/
+function _bk_chart_exists ($gid){
+	return db_select('bk_chart', 'c')
+		->fields('c')
+		->condition('gid', $gid)
+		->execute()
+		->fetchObject();
+}
+
+/*
+* Funcition _bk_chart_has_children()
+* Checks if group has subgroups
+*/
+function _bk_chart_has_children ($gid){
+	$gr=db_query("SELECT c.*, j.gid as 'chld' FROM {bk_chart} c
+LEFT JOIN {bk_chart} j on j.gid LIKE CONCAT( c.gid, '%') and j.gid<>c.gid
+WHERE c.gid=:gid", array(':gid'=>$gid))->fetchObject();
+	return $gr->chld;
+}
+

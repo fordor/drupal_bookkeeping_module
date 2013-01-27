@@ -1,0 +1,9 @@
+;$Id$
+name = Bookkeeping Chart UI
+description = Bookkeeping Char User Interface
+package = Bookkeeping
+core = 7.x
+
+dependencies[] = bk
+dependencies[] = context_menu
+files[]=bk_chart_edit.inc
