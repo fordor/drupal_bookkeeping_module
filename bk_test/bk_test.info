@@ -1,5 +1,0 @@
-;$Id$
-name = Bookkeeping Test
-description = Bookkeeping Test to show my brother
-package = Bookkeeping
-core = 7.x
